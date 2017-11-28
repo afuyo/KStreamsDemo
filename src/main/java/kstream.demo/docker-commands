@@ -1,0 +1,8 @@
+sudo docker image build -t kstreams-demo:latest .
+
+sudo docker container run kstreams-demo:latest
+
+sudo docker ps
+
+docker stop container_id
+

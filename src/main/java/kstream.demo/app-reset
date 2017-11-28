@@ -1,0 +1,1 @@
+./bin/kafka-streams-application-reset --application-id customer-kafka-streaming-demo3 --input-topics customer,policy,claim,claimpayment --bootstrap-servers $BROKERS --zookeeper $ZKHOSTS^C,policy,claim,claimpaym
