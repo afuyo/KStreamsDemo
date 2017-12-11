@@ -2,6 +2,7 @@ package kstream.demo;
 
 //import nl.amis.streams.model.CustomerAndPolicy;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
@@ -9,12 +10,20 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.processor.WallclockTimestampExtractor;
+import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.QueryableStoreType;
+import org.apache.kafka.streams.state.QueryableStoreTypes;
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -119,18 +128,31 @@ public class CustomerStreamPipelineHDI {
         }
         public CustomerPolicyClaimPayment () {}
     }
+    private static <T> T waitUntilStoreIsQueryable(final String storeName,
+                                                   final QueryableStoreType<T> queryableStoreType,
+                                                   final KafkaStreams streams) throws InterruptedException {
+        while (true) {
+            try {
+                return streams.store(storeName, queryableStoreType);
+            } catch (InvalidStateStoreException ignored) {
+                // store not yet ready for querying
+                Thread.sleep(100);
+            }
+        }
+    }
 
-    private static final String APP_ID = "customer-kafka-streaming-demo3";
+    private static final String APP_ID = "customer-kafka-streaming-demo4";
     private static final String CUSTOMER_TOPIC = "customer";
     private static final String POLICY_TOPIC = "policy";
     private static final String CLAIM_TOPIC = "claim";
     private static final String PAYMENT_TOPIC = "claimpayment"  ;
-    private static final String CUSTOMER_OUT_TOPIC = "X5customer_output";
+    private static final String CUSTOMER_OUT_TOPIC = "X7customer_output";
     private static final String CUSTOMER_STORE = "X5CustomerStore";
     private static final String POLICY_STORE = "X5PolicyStore";
     private static final String CLAIM_STORE = "X5ClaimStrStore";
     private static final String PAYMENT_STORE = "X5PaymentStore";
     private static final String CLAIM_AND_PAYMENT_STORE= "X5claimAndPayment2Store";
+    private static final String LEVEL = "DEBUG";
     
     public static void main(String[] args) {
 
@@ -326,20 +348,7 @@ public class CustomerStreamPipelineHDI {
                             return customerList;
                         },customerListSerde,CUSTOMER_STORE);
 
-        customerGrouped.<String>mapValues((cstgrp) -> {
 
-                    String countries = new String();
-                    System.out.println("CustomerSize "+ cstgrp.lst.size());
-                    for(CustomerMessage elem : cstgrp.lst)
-                    {
-                        // System.out.println("elem is now "+elem.name);
-                        countries= countries + elem.customer;
-                    }
-
-                    return "Customers"+ countries;
-                }
-        )
-                .print(integerSerde,stringSerde);
         /**********************************************************************************/
 
         /******************************************POLICY*********************************/
@@ -351,9 +360,6 @@ public class CustomerStreamPipelineHDI {
                         (policyKey, policyMsg, policyLst) -> {
 
                             policyLst.lst.add(policyMsg);
-                            System.out.println("Adding policy "+policyMsg.policy);
-                            System.out.println("Adding policy endtime "+policyMsg.policyendtime);
-
 
                             return (policyLst);
                         }
@@ -361,21 +367,6 @@ public class CustomerStreamPipelineHDI {
                         ,  POLICY_STORE
                 );
 
-
-        policyGrouped.<String>mapValues((cstgrp) -> {
-
-                    String policies = new String();
-                    System.out.println("PolicySize "+ cstgrp.lst.size());
-                    for(PolicyMessage elem : cstgrp.lst)
-                    {
-                        // System.out.println("elem is now "+elem.name);
-                        policies= policies + elem.policy;
-                    }
-
-                    return "Policies"+ policies;
-                }
-        )
-                .print(integerSerde,stringSerde);
 
         /**********************************************************************************/
 
@@ -402,25 +393,9 @@ public class CustomerStreamPipelineHDI {
 
 
 
-        claimStrGrouped.<String>mapValues((clmgrp) -> {
-
-                    String claims = new String();
-                    //System.out.println("Size2 "+ cstgrp.lst.size());
-                    for(ClaimMessage elem : clmgrp.lst)
-                    {
-                        // System.out.println("elem is now "+elem.name);
-                        claims= claims +"key: "+elem.claimnumber+" time: " +elem.claimtime;
-                    }
-
-                    return "Claims "+ claims;
-                }
-        )
-                .print(stringSerde,stringSerde);
-
-
         /***************************************PAYMENT**********************************/
 
-       KTable<String,PaymentList> paymentGrouped = paymentStream
+      KTable<String,PaymentList> paymentGrouped = paymentStream
                 .groupBy((k, payment) -> payment.claimnumber,stringSerde,paymentMessageSerde)
                 .aggregate(
                         PaymentList::new
@@ -428,8 +403,6 @@ public class CustomerStreamPipelineHDI {
                         (payKey, payMsg, payLst) -> {
 
 
-                            // System.out.println("Adding policy "+policyMsg.policy);
-                            //System.out.println("Adding policy endtime "+policyMsg.policyendtime);
 
                            payLst.lst.add(payMsg);
                             return (payLst);
@@ -438,20 +411,7 @@ public class CustomerStreamPipelineHDI {
                         ,  PAYMENT_STORE
                 );
 
-        paymentGrouped.<String>mapValues((paygrp) -> {
 
-                    String payments = new String();
-                    //System.out.println("Size2 "+ cstgrp.lst.size());
-                    for(PaymentMessage elem : paygrp.lst)
-                    {
-                        // System.out.println("elem is now "+elem.name);
-                        payments= payments +" claimnumber: "+elem.claimnumber+" paytime: " +elem.paytime;
-                    }
-
-                    return "Payments "+ payments;
-                }
-        )
-                .print(stringSerde,stringSerde);
 
         /**********************************JOIN*******************************************/
 
@@ -481,108 +441,15 @@ public class CustomerStreamPipelineHDI {
 
 
 
-      KTable<Integer,CustomerPolicyClaimPayment> allJoinedAndCoGrouped = customerAndPolicyGroupedKTable.join(claimAndPayment2IntGroupedTable,(left,right) -> new CustomerPolicyClaimPayment(left,right));
-
-      // allJoinedAndCoGrouped.toStream().to("customer_output");
-
-      allJoinedAndCoGrouped.through(integerSerde,customerPolicyClaimPaymentSerde,CUSTOMER_OUT_TOPIC);
+        KTable<Integer,CustomerPolicyClaimPayment> allJoinedAndCoGrouped = customerAndPolicyGroupedKTable.leftJoin(claimAndPayment2IntGroupedTable,(left,right) -> new CustomerPolicyClaimPayment(left,right));
 
 
-        /************************PRINT      **********************************************/
 
-        /********************************************************************************/
-        /*************************ALL JOINED AND COGROUPED*******************************/
-        /*******************************************************************************/
+      //allJoinedAndCoGrouped.through(integerSerde,customerPolicyClaimPaymentSerde,CUSTOMER_OUT_TOPIC);
 
-      /** allJoinedAndCoGrouped.<String>mapValues((allJoined) -> {
-            String results = new String();
-            String customers = new String();
-            String policies  = new String();
-            String claims = new String();
-            String payments = new String();
+        String storeName = allJoinedAndCoGrouped.through(integerSerde,customerPolicyClaimPaymentSerde,CUSTOMER_OUT_TOPIC).queryableStoreName();
+        System.out.println("Store name "+storeName);
 
-
-                for(CustomerMessage customer : allJoined.customerAndPolicy.customerList.lst){
-                    customers = customers+" address: "+customer.address+" customer: "+customer.customer+" customertime "+customer.customertime;
-                }
-                for(PolicyMessage policy : allJoined.customerAndPolicy.policyList.lst){
-                    policies = policies +" policy: "+policy.pvar1+" policyendtime "+policy.policyendtime+" policy: "+policy.policy+" policystarttime: "+policy.policystarttime+" pvar0: "+policy.pvar0;
-                }
-                for(ClaimAndPayment claimPay : allJoined.claimAndPayment2.claimAndPaymentList){
-                    for(ClaimMessage claim : claimPay.claimList.lst){
-                        claims = claims+" claimtime: "+claim.claimtime+" claimcounter "+claim.claimcounter+" claimnumber: "+claim.claimnumber+" claimreporttime: "+claim.claimreporttime;
-                    }
-                    for(PaymentMessage payment : claimPay.paymentList.lst){
-                        payments = payments+" payment: "+payment.payment+" paytime: "+payment.paytime+" claimcounter: "+payment.claimcounter+" claimnumber: "+payment.claimnumber;
-                    }
-                }
-
-                return results="All Joined Customers "+customers+" Policies "+policies+" Claims "+claims+" Payments "+payments;
-        }).print(integerSerde,stringSerde); **/
-
-        /********************************************************************************/
-        /**************************CLAIM_AND_PAYMENT**************************************/
-        /********************************************************************************/
-
-      /*claimAndPayment2IntGroupedTable.<String>mapValues((claimAndPay) -> {
-            String claimAndPayments = new String();
-            String claims = new String();
-            String payments = new String();
-            for(ClaimAndPayment elem : claimAndPay.claimAndPaymentList){
-                for(ClaimMessage elem2 : elem.claimList.lst)
-                    claims=claims+" claimnumber: "+elem2.claimnumber+" claimtime: "+elem2.claimtime;
-                for(PaymentMessage elem3 : elem.paymentList.lst)
-                    payments = payments+" claimnumber: "+elem3.claimnumber+" paytime: "+elem3.paytime;
-            }
-                return claimAndPayments= "ClainAndPayments  with Integer"+claims+payments;
-        }).print(integerSerde,stringSerde);*/
-
-
-        /*********************************************************************************/
-        /**********CUSTOMER AND POLICY***************************************************/
-        /********************************************************************************/
-
-      /* customerAndPolicyGroupedKTable.<String>mapValues((custPol) -> {
-           String customersAndPolicies = new String();
-           String customers = new String();
-           String policies = new String();
-         //  System.out.println("custPol"+custPol.customerList.lst.get(0).customertime);
-         //  System.out.println("custPol.cust.size()"+custPol.customerList.lst.size());
-            for(CustomerMessage elem : custPol.customerList.lst)
-            {
-                customers= customers+elem.customer+" : "+elem.address+" : "+elem.customertime;
-               // System.out.println(elem.customertime);
-            }
-            for(PolicyMessage elem : custPol.policyList.lst)
-            {
-                policies =policies+ elem.policy+":endTime "+elem.policyendtime+":strtTime "+elem.policystarttime;
-            }
-          // customersAndPolicies= custPol.customerList.lst.get(1).customer;
-            customersAndPolicies = "Customer "+customers+" Policy "+policies;
-           // System.out.println("customersAndPolicies "+customersAndPolicies);
-           return "Joined Customer And Policies " + customersAndPolicies;
-        }).print(integerSerde,stringSerde);*/
-        /********************************************************************************/
-        /*************************CLAIM AND PAYMENT***************************************/
-        /********************************************************************************/
-
-     /*  claimAndPaymentKTable.<String>mapValues((claimPay) -> {
-           String claimAndPayments = new String();
-           String claims = new String();
-           String payments = new String();
-           if(claimPay!=null) {
-               for (ClaimMessage elem : claimPay.claimList.lst) {
-                   claims = claims + " claimNum : " + elem.claimnumber + " claimTime: " + elem.claimtime;
-               }
-               if (claimPay.paymentList != null) {
-                   for (PaymentMessage elem : claimPay.paymentList.lst) {
-                       payments = payments + " payNum " + elem.claimnumber + " payTime: " + elem.paytime;
-                   }
-               }
-           }
-
-            return claimAndPayments="ClaimAndPayments "+claims+payments;
-        }).print(stringSerde,stringSerde);*/
 
 
 
@@ -595,6 +462,53 @@ public class CustomerStreamPipelineHDI {
         kafkaStreams.start();
 
         System.out.println("Now started Customer Demo");
+
+        Timestamp t = new Timestamp(System.currentTimeMillis());
+        System.out.println(t);
+
+
+
+        Long starttime=System.currentTimeMillis();
+
+
+        try {
+            ReadOnlyKeyValueStore<Integer, CustomerPolicyClaimPayment> keyValueStore = waitUntilStoreIsQueryable(storeName, QueryableStoreTypes.keyValueStore(), kafkaStreams);
+            // System.out.println("NumEntries "+keyValueStore.approximateNumEntries());
+
+            Long endtime=System.currentTimeMillis();
+            Long duration = (endtime-starttime)/1000;
+            Timestamp runtime = new Timestamp(System.currentTimeMillis());
+
+            System.out.println("Running time"+(endtime-starttime)/1000);
+            // System.out.println("Endtime"+endtime);
+            PrintWriter writer = new PrintWriter("/tmp/print.txt","UTF-8");
+            writer.println("Started"+t);
+            writer.println("Ended "+runtime);
+            System.out.println("Ended"+runtime);
+             writer.close();
+
+            CustomerPolicyClaimPayment c = keyValueStore.get(2);
+            KeyValueIterator<Integer,CustomerPolicyClaimPayment> kv = keyValueStore.all();
+            // KeyValueIterator <Integer, CustomerPolicyClaimPayment> kvrange = keyValueStore.range(1,9999);
+            int policies = 0;
+            int claims = 0;
+            int customers = 0;
+            int payments = 0;
+
+
+
+            //System.out.println("Num of Policies: "+policies+"Num of customers: "+customers+"Num of claims: "+claims+"Num of payments: "+payments);
+            //  System.out.println("Num of Customers grouped by key "+groupedcustomers);
+            // System.out.println("Num of Policies grouped by key :"+groupedpolicies);
+            // System.out.println("Num of Claims grouped by key: "+groupoedclaims);
+            // System.out.println("NumOfPayments grouped by key : "+groupedpayments);
+
+
+        } catch (Exception e)
+        {
+            System.out.println(e);
+        }
+
 
 
     }
@@ -612,12 +526,18 @@ public class CustomerStreamPipelineHDI {
         //settings.put(StreamsConfig.VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         settings.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         settings.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
-        settings.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/customerPipe");
+        settings.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/customerPipe2");
         // to work around exception Exception in thread "StreamThread-1" java.lang.IllegalArgumentException: Invalid timestamp -1
         // at org.apache.kafka.clients.producer.ProducerRecord.<init>(ProducerRecord.java:60)
         // see: https://groups.google.com/forum/#!topic/confluent-platform/5oT0GRztPBo
         settings.put(StreamsConfig.TIMESTAMP_EXTRACTOR_CLASS_CONFIG, WallclockTimestampExtractor.class);
         settings.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
+        //settings.put(ConsumerConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
+        settings.put(ConsumerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        //settings.put(StreamsConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
+        settings.put(StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        //settings.put(ProducerConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
+        settings.put(ProducerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
         return settings;
     }
 }
