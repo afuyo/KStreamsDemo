@@ -49,13 +49,13 @@ public class CustomerStreamPipelineHDI {
     static public class CustomerList {
 
 
-        public ArrayList<CustomerMessage> lst = new ArrayList<>();
+        public ArrayList<CustomerMessage> customerRecords = new ArrayList<>();
         String s = new String();
         public CustomerList() {}
     }
 
     static public class PolicyList{
-        public ArrayList<PolicyMessage> lst = new ArrayList<>();
+        public ArrayList<PolicyMessage> policyRecords = new ArrayList<>();
 
         public PolicyList() {}
 
@@ -69,14 +69,11 @@ public class CustomerStreamPipelineHDI {
         public String claimcounter;
     }
     static public class ClaimList{
-        public ArrayList<ClaimMessage> lst = new ArrayList<>();
+        public ArrayList<ClaimMessage> claimRecords = new ArrayList<>();
         public ClaimList() {}
     }
 
-    static public class ClaimList2{
-        public ArrayList<ClaimList> lst = new ArrayList<>();
-        public ClaimList2() {}
-    }
+
 
     static public class PaymentMessage {
 
@@ -87,7 +84,7 @@ public class CustomerStreamPipelineHDI {
     }
     static public class PaymentList
     {
-        public ArrayList<PaymentMessage> lst = new ArrayList<>();
+        public ArrayList<PaymentMessage> paymentRecords = new ArrayList<>();
         public PaymentList() {}
     }
   static public class CustomerAndPolicy {
@@ -108,13 +105,17 @@ public class CustomerStreamPipelineHDI {
 
         public ClaimList claimList = new ClaimList();
         public PaymentList paymentList = new PaymentList();
+        public ClaimAndPayment(){}
+
         public ClaimAndPayment(ClaimList claimList, PaymentList paymentList){
             this.claimList=claimList;
             this.paymentList=paymentList;
         }
-        public ClaimAndPayment(){}
+
 
     }
+    /*store claims and payments after repartitioning on integer as key. Original key for CalimAndPayment is string e.g 3_0,
+    * after repationing it will be 3*/
     static public class ClaimAndPayment2{
         public ArrayList<ClaimAndPayment> claimAndPaymentList = new ArrayList<>();
         public ClaimAndPayment2() {}
@@ -142,16 +143,17 @@ public class CustomerStreamPipelineHDI {
     }
 
     private static final String APP_ID = "customer-kafka-streaming-demo4";
-    private static final String CUSTOMER_TOPIC = "customer";
-    private static final String POLICY_TOPIC = "policy";
-    private static final String CLAIM_TOPIC = "claim";
-    private static final String PAYMENT_TOPIC = "claimpayment"  ;
-    private static final String CUSTOMER_OUT_TOPIC = "X7customer_output";
-    private static final String CUSTOMER_STORE = "X5CustomerStore";
-    private static final String POLICY_STORE = "X5PolicyStore";
-    private static final String CLAIM_STORE = "X5ClaimStrStore";
-    private static final String PAYMENT_STORE = "X5PaymentStore";
-    private static final String CLAIM_AND_PAYMENT_STORE= "X5claimAndPayment2Store";
+    private static final String CUSTOMER_TOPIC = "customer100";
+    private static final String POLICY_TOPIC = "policy100";
+    private static final String CLAIM_TOPIC = "claim100";
+    private static final String PAYMENT_TOPIC = "claimpayment100"  ;
+    private static final String CUSTOMER_OUT_TOPIC = "X100customer_left";
+    private static final String CUSTOMER_STORE = "X4CustomerStore";
+    private static final String POLICY_STORE = "X4PolicyStore";
+    private static final String CLAIM_STORE = "X4ClaimStrStore";
+    private static final String PAYMENT_STORE = "X4PaymentStore";
+    private static final String CLAIM_AND_PAYMENT_STORE= "X4claimAndPayment2Store";
+    private static final String CLAIM_AND_PAYMENT_JOIN_STORE= "X4claimAndPaymentJoin";
     private static final String LEVEL = "DEBUG";
     
     public static void main(String[] args) {
@@ -230,19 +232,6 @@ public class CustomerStreamPipelineHDI {
         serdeProps.put("JsonPOJOClass", ClaimList.class);
         claimListDeserializer.configure(serdeProps, false);
         final Serde<ClaimList> claimListSerde = Serdes.serdeFrom(claimListSerializer, claimListDeserializer );
-
-        // define claimList2Serde
-        serdeProps = new HashMap<String, Object>();
-        final Serializer<ClaimList2> claimList2Serializer = new JsonPOJOSerializer<>();
-        serdeProps.put("JsonPOJOClass", ClaimList2.class);
-        claimList2Serializer.configure(serdeProps, false);
-
-        final Deserializer<ClaimList2> claimList2Deserializer = new JsonPOJODeserializer<>();
-        serdeProps.put("JsonPOJOClass", ClaimList2.class);
-        claimList2Deserializer.configure(serdeProps, false);
-        final Serde<ClaimList2> claimList2Serde = Serdes.serdeFrom(claimList2Serializer, claimList2Deserializer );
-
-
 
 
         /***********************************************PAYMENT********************************************/
@@ -344,7 +333,7 @@ public class CustomerStreamPipelineHDI {
                         .groupBy((key,value) -> Integer.parseInt(value.customer.replaceFirst("cust","")),integerSerde,customerMessageSerde)
 
                         .aggregate(CustomerList::new,(ckey,custMessage,customerList) -> {
-                            customerList.lst.add(custMessage);
+                            customerList.customerRecords.add(custMessage);
                             return customerList;
                         },customerListSerde,CUSTOMER_STORE);
 
@@ -359,7 +348,7 @@ public class CustomerStreamPipelineHDI {
                         ,
                         (policyKey, policyMsg, policyLst) -> {
 
-                            policyLst.lst.add(policyMsg);
+                            policyLst.policyRecords.add(policyMsg);
 
                             return (policyLst);
                         }
@@ -380,10 +369,7 @@ public class CustomerStreamPipelineHDI {
                         ,
                         (claimKey, claimMsg, claimLst) -> {
 
-                            claimLst.lst.add(claimMsg);
-                            // System.out.println("Adding policy "+policyMsg.policy);
-                            //System.out.println("Adding policy endtime "+policyMsg.policyendtime);
-
+                            claimLst.claimRecords.add(claimMsg);
 
                             return (claimLst);
                         }
@@ -404,7 +390,7 @@ public class CustomerStreamPipelineHDI {
 
 
 
-                           payLst.lst.add(payMsg);
+                           payLst.paymentRecords.add(payMsg);
                             return (payLst);
                         }
                         , paymentListSerde
@@ -415,23 +401,26 @@ public class CustomerStreamPipelineHDI {
 
         /**********************************JOIN*******************************************/
 
-       KTable<Integer,CustomerAndPolicy> customerAndPolicyGroupedKTable = customerGrouped.join(policyGrouped,(customer, policy) -> new CustomerAndPolicy(customer,policy));
+       KTable<Integer,CustomerAndPolicy> customerAndPolicyGroupedKTable = customerGrouped.leftJoin(policyGrouped,(customer, policy) -> new CustomerAndPolicy(customer,policy));
         //customerAndPolicyKTable.print();
-       KTable<String,ClaimAndPayment> claimAndPaymentKTable = claimStrGrouped.leftJoin(paymentGrouped,(claim,payment) -> new ClaimAndPayment(claim,payment));
+       KTable<String,ClaimAndPayment> claimAndPaymentKTable = claimStrGrouped.leftJoin(paymentGrouped,(claim,payment) -> new ClaimAndPayment(claim,payment),claimAndPaymentSerde,CLAIM_AND_PAYMENT_JOIN_STORE);
 
 
       KStream<String,ClaimAndPayment> claimAndPaymentKStream = claimAndPaymentKTable.toStream();
 
        KTable<Integer,ClaimAndPayment2> claimAndPayment2IntGroupedTable =  claimAndPaymentKStream
                .groupBy((k,claimPay) ->
-                   (claimPay != null ) ?
-                  Integer.parseInt(claimPay.claimList.lst.get(0).claimnumber.split("_")[0]) :  999,integerSerde,claimAndPaymentSerde )
+                   (claimPay.claimList != null ) ?
+                  Integer.parseInt(claimPay.claimList.claimRecords.get(0).claimnumber.split("_")[0]) :  999,integerSerde,claimAndPaymentSerde )
                .aggregate(
                         ClaimAndPayment2::new,
                         (claimKey,claimPay,claimAndPay2) -> {
+                                   /*condition needs to be there if outerJoins are used. Otherwise all payments will be grupped under null records*/
+                                   // if(claimPay.claimList != null)
+                                    claimAndPay2.claimAndPaymentList.add(claimPay);
 
-                            claimAndPay2.claimAndPaymentList.add(claimPay);
-                            return claimAndPay2;
+                                return claimAndPay2;
+
                         }
                         ,claimAndPayment2Serde
                         ,CLAIM_AND_PAYMENT_STORE
@@ -443,12 +432,7 @@ public class CustomerStreamPipelineHDI {
 
         KTable<Integer,CustomerPolicyClaimPayment> allJoinedAndCoGrouped = customerAndPolicyGroupedKTable.leftJoin(claimAndPayment2IntGroupedTable,(left,right) -> new CustomerPolicyClaimPayment(left,right));
 
-
-
-      //allJoinedAndCoGrouped.through(integerSerde,customerPolicyClaimPaymentSerde,CUSTOMER_OUT_TOPIC);
-
         String storeName = allJoinedAndCoGrouped.through(integerSerde,customerPolicyClaimPaymentSerde,CUSTOMER_OUT_TOPIC).queryableStoreName();
-        System.out.println("Store name "+storeName);
 
 
 
@@ -466,48 +450,7 @@ public class CustomerStreamPipelineHDI {
         Timestamp t = new Timestamp(System.currentTimeMillis());
         System.out.println(t);
 
-
-
         Long starttime=System.currentTimeMillis();
-
-
-        try {
-            ReadOnlyKeyValueStore<Integer, CustomerPolicyClaimPayment> keyValueStore = waitUntilStoreIsQueryable(storeName, QueryableStoreTypes.keyValueStore(), kafkaStreams);
-            // System.out.println("NumEntries "+keyValueStore.approximateNumEntries());
-
-            Long endtime=System.currentTimeMillis();
-            Long duration = (endtime-starttime)/1000;
-            Timestamp runtime = new Timestamp(System.currentTimeMillis());
-
-            System.out.println("Running time"+(endtime-starttime)/1000);
-            // System.out.println("Endtime"+endtime);
-            PrintWriter writer = new PrintWriter("/tmp/print.txt","UTF-8");
-            writer.println("Started"+t);
-            writer.println("Ended "+runtime);
-            System.out.println("Ended"+runtime);
-             writer.close();
-
-            CustomerPolicyClaimPayment c = keyValueStore.get(2);
-            KeyValueIterator<Integer,CustomerPolicyClaimPayment> kv = keyValueStore.all();
-            // KeyValueIterator <Integer, CustomerPolicyClaimPayment> kvrange = keyValueStore.range(1,9999);
-            int policies = 0;
-            int claims = 0;
-            int customers = 0;
-            int payments = 0;
-
-
-
-            //System.out.println("Num of Policies: "+policies+"Num of customers: "+customers+"Num of claims: "+claims+"Num of payments: "+payments);
-            //  System.out.println("Num of Customers grouped by key "+groupedcustomers);
-            // System.out.println("Num of Policies grouped by key :"+groupedpolicies);
-            // System.out.println("Num of Claims grouped by key: "+groupoedclaims);
-            // System.out.println("NumOfPayments grouped by key : "+groupedpayments);
-
-
-        } catch (Exception e)
-        {
-            System.out.println(e);
-        }
 
 
 
@@ -518,9 +461,11 @@ public class CustomerStreamPipelineHDI {
         // Set a few key parameters
         settings.put(StreamsConfig.APPLICATION_ID_CONFIG, APP_ID);
         // Kafka bootstrap server (broker to talk to); ubuntu is the host name for my VM running Kafka, port 9092 is where the (single) broker listens
-        settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.101.12.16:9092,10.101.12.6:9092,10.101.12.5:9092,10.101.12.4:9092,10.101.12.9:9092");
+        //settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.101.12.16:9092,10.101.12.6:9092,10.101.12.5:9092,10.101.12.4:9092,10.101.12.9:9092");
+        settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         // Apache ZooKeeper instance keeping watch over the Kafka cluster; ubuntu is the host name for my VM running Kafka, port 2181 is where the ZooKeeper listens
-        settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "10.101.12.11:2181,10.101.12.7:2181,10.101.12.12:2181");
+       // settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "10.101.12.11:2181,10.101.12.7:2181,10.101.12.12:2181");
+        settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "localhost:2181");
         // default serdes for serialzing and deserializing key and value from and to streams in case no specific Serde is specified
         //settings.put(StreamsConfig.KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         //settings.put(StreamsConfig.VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
