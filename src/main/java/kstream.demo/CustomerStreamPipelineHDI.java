@@ -483,6 +483,8 @@ public class CustomerStreamPipelineHDI {
         settings.put(StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
         //settings.put(ProducerConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
         settings.put(ProducerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        settings.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG,"exactly_once");
+        settings.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG,5000*1024*1024L);
         return settings;
     }
 }
