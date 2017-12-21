@@ -1,7 +1,7 @@
 # KStreamsDemo
 
-Group by will generate repartioning
+##Group by will generate repartioning
 ![alt text](images/group.jpg)
 
-Data flow
+##Data flow
 ![alt text](images/join.jpg)
