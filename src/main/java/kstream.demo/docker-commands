@@ -4,5 +4,11 @@ sudo docker container run kstreams-demo:latest
 
 sudo docker ps
 
+sudo docker push dkneuacrdevcr001.azurecr.io/kstreams-demo1:v1
+
+sudo docker tag kstreams-demo1:v1 dkneuacrdevcr001.azurecr.io/kstreams-demo1:v1
+
 docker stop container_id
 
+
+sudo docker rmi -f 0814b252f264
