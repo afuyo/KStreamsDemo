@@ -1,0 +1,23 @@
+sudo docker tag kstreams-demo2 saundersreg.azurecr.io/kstreams-demo2:latest
+sudo docker login dkneuacrdevcr001.azurecr.io -u saundersreg -p =+y/YQ=M=Kd69+MTUFveU6Bpk8XMRD=k
+docker push saundersreg.azurecr.io/kstreams-demo2:latest
+kubectl create -f kafka-streams2-deployment.yml 
+kubectl delete deploy kstreamsdemo-deployment
+
+
+
+kstreamsdemo-deployment-2962557562-r13r3
+kubectl exec -it kstreamsdemo-deployment-2962557562-r13r3 /bin/bash
+
+ kubectl exec -it accidentsoaptest23-2579077587-qmdq3 /bin/bash
+
+
+
+kubectl delete svc nginx
+ kubectl delete deployment nginx
+
+
+
+
+
+
