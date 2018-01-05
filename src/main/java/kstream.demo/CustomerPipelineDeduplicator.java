@@ -150,18 +150,18 @@ public class CustomerPipelineDeduplicator {
         }
     }
 
-    private static final String APP_ID = "customer-kafka-streaming-demo4";
-    private static final String CUSTOMER_TOPIC = "customer100";
-    private static final String POLICY_TOPIC = "policy100";
-    private static final String CLAIM_TOPIC = "claim100";
-    private static final String PAYMENT_TOPIC = "claimpayment100"  ;
-    private static final String CUSTOMER_OUT_TOPIC = "X100customer_dedup";
-    private static final String CUSTOMER_STORE = "X4CustomerStore";
-    private static final String POLICY_STORE = "X4PolicyStore";
-    private static final String CLAIM_STORE = "X4ClaimStrStore";
-    private static final String PAYMENT_STORE = "X4PaymentStore";
-    private static final String CLAIM_AND_PAYMENT_STORE= "X4claimAndPayment2Store";
-    private static final String CLAIM_AND_PAYMENT_JOIN_STORE= "X4claimAndPaymentJoin";
+    private static final String APP_ID = "37PerformanceTestingApps";
+    private static final String CUSTOMER_TOPIC = "customer";
+    private static final String POLICY_TOPIC = "policy";
+    private static final String CLAIM_TOPIC = "claim";
+    private static final String PAYMENT_TOPIC = "claimpayment"  ;
+    private static final String CUSTOMER_OUT_TOPIC = "KafkaPerformanceTest39";
+    private static final String CUSTOMER_STORE = "CustomerStore";
+    private static final String POLICY_STORE = "PolicyStore";
+    private static final String CLAIM_STORE = "ClaimStrStore";
+    private static final String PAYMENT_STORE = "PaymentStore";
+    private static final String CLAIM_AND_PAYMENT_STORE= "claimAndPayment2Store";
+    private static final String CLAIM_AND_PAYMENT_JOIN_STORE= "claimAndPaymentJoin";
     private static final String LEVEL = "DEBUG";
     
     public static void main(String[] args) {
@@ -410,7 +410,7 @@ public class CustomerPipelineDeduplicator {
         /**********************************JOIN*******************************************/
 
        KTable<Integer,CustomerAndPolicy> customerAndPolicyGroupedKTable = customerGrouped.join(policyGrouped,(customer, policy) -> new CustomerAndPolicy(customer,policy));
-       KTable<String,ClaimAndPayment> claimAndPaymentKTable = claimStrGrouped.leftJoin(paymentGrouped,(claim,payment) -> new ClaimAndPayment(claim,payment),claimAndPaymentSerde,CLAIM_AND_PAYMENT_JOIN_STORE);
+       KTable<String,ClaimAndPayment> claimAndPaymentKTable = claimStrGrouped.leftJoin(paymentGrouped,(claim,payment) -> new ClaimAndPayment(claim,payment));
 
 
       KStream<String,ClaimAndPayment> claimAndPaymentKStream = claimAndPaymentKTable.toStream();
@@ -473,12 +473,11 @@ public class CustomerPipelineDeduplicator {
         // Set a few key parameters
         settings.put(StreamsConfig.APPLICATION_ID_CONFIG, APP_ID);
         // Kafka bootstrap server (broker to talk to); ubuntu is the host name for my VM running Kafka, port 9092 is where the (single) broker listens
-        //settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.101.12.16:9092,10.101.12.6:9092,10.101.12.5:9092,10.101.12.4:9092,10.101.12.9:9092");
-        settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        //settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG,"localhost:9092");
+        settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.101.12.34:9092,10.101.12.32:9092,10.101.12.10:9092,10.101.12.14:9092,10.101.12.27:9092,10.101.12.39:9092,10.101.12.8:9092,10.101.12.13:9092,10.101.12.26:9092,10.101.12.23:9092,10.101.12.28:9092,10.101.12.22:9092");
+        //settings.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         // Apache ZooKeeper instance keeping watch over the Kafka cluster; ubuntu is the host name for my VM running Kafka, port 2181 is where the ZooKeeper listens
-        //settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "10.101.12.11:2181,10.101.12.7:2181,10.101.12.12:2181");
-        settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "localhost:2181");
+        settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "10.101.12.37:2181,10.101.12.40:2181,10.101.12.24:2181");
+        //settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "localhost:2181");
         //settings.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG,"localhost:2181");
         // default serdes for serialzing and deserializing key and value from and to streams in case no specific Serde is specified
         //settings.put(StreamsConfig.KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
@@ -492,13 +491,14 @@ public class CustomerPipelineDeduplicator {
         settings.put(StreamsConfig.TIMESTAMP_EXTRACTOR_CLASS_CONFIG, WallclockTimestampExtractor.class);
         settings.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
         //settings.put(ConsumerConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
-        settings.put(ConsumerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        //settings.put(ConsumerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
         //settings.put(StreamsConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
-        settings.put(StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        //settings.put(StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
         //settings.put(ProducerConfig.METRIC_REPORTER_CLASSES_CONFIG,"metric.reporters");
-        settings.put(ProducerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
-        settings.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG,"exactly_once");
-        settings.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG,5000*1024*1024L);
+        //settings.put(ProducerConfig.METRICS_RECORDING_LEVEL_CONFIG,LEVEL);
+        //settings.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG,"exactly_once");
+        settings.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG,10000*1024*1024L);
+        settings.put(StreamsConfig.NUM_STREAM_THREADS_CONFIG,1);
         return settings;
     }
 }
