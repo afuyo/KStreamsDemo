@@ -1,0 +1,24 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: kstreamsdemo-deployment
+  labels:
+    app: kstreams1
+spec:
+  replicas: 48
+  selector:
+    matchLabels:
+      app: kstreams1
+  template:
+    metadata:
+      labels:
+        app: kstreams1
+    spec:
+      containers:
+      - name: kafka
+        image: dkneuacrdevcr001.azurecr.io/kstreams-demo1:v6
+        imagePullPolicy: IfNotPresent
+      imagePullSecrets:
+      - name: devdckkey
+
+
